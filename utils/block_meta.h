@@ -15,7 +15,10 @@
 		}												\
 	} while (0)
 
-/* Structure to hold memory block metadata */
+/**
+ * Structure to hold memory block metadata
+ * @param size Aligned data size 
+ */
 struct block_meta {
 	size_t size;
 	int status;

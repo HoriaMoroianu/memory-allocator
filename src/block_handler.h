@@ -13,9 +13,13 @@
 
 #define MMAP_THRESHOLD (128 * 1024)
 #define PREALLOCATE_SIZE (128 * 1024)
-#define META_SIZE sizeof(struct block_meta)
+#define META_SIZE ALIGN(sizeof(struct block_meta))
 
 struct block_meta *list_head;
 
 void preallocate_memory(void);
-struct block_meta *expand_memory(size_t size);
+struct block_meta *find_best_free(size_t size);
+struct block_meta *expand_mapped_memory(size_t size);
+struct block_meta *expand_heap_memory(size_t size);
+
+struct block_meta *get_last_block(void);

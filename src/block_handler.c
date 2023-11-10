@@ -4,9 +4,12 @@
 
 void preallocate_memory(void)
 {
-	void *new_block = sbrk(PREALLOCATE_SIZE);
-	DIE(new_block == (void *) -1, "Preallocation failed!");
+	if (list_head)
+		return;
 
+	void *new_block = sbrk(PREALLOCATE_SIZE);
+
+	DIE(new_block == (void *) -1, "Preallocation failed!");
 	((struct block_meta *)new_block)->size = PREALLOCATE_SIZE - META_SIZE;
 	((struct block_meta *)new_block)->status = STATUS_FREE;
 	((struct block_meta *)new_block)->prev = NULL;
@@ -15,28 +18,73 @@ void preallocate_memory(void)
 	list_head = (struct block_meta *)new_block;
 }
 
-struct block_meta *expand_memory(size_t size)
+/**
+ * @param size Raw data size
+ */
+struct block_meta *find_best_free(size_t size)
 {
-	void *new_mem;
+	struct block_meta *best_block = NULL;
 
-	if (ALIGN(size) + ALIGN(META_SIZE) >= MMAP_THRESHOLD) {
-		new_mem = mmap(NULL, ALIGN(size) + ALIGN(META_SIZE), PROT_READ | PROT_WRITE,
-						MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-		DIE(new_mem == MAP_FAILED, "Failed to expand program memory!");
+	for (struct block_meta *curr = list_head; curr; curr = curr->next) {
+		if (curr->status == STATUS_FREE && curr->size >= ALIGN(size) &&
+			(!best_block || best_block->size > curr->size))
+				best_block = curr;
+	}
+	return best_block;
+}
 
-		// ((block_meta *list_head)new_mem)->status = STATUS_MAPPED;
-		((struct block_meta *)new_mem)->status = STATUS_MAPPED;
+/**
+ * @param size Raw data size
+ */
+struct block_meta *expand_mapped_memory(size_t size)
+{
+	void *new_block = mmap(NULL, ALIGN(size) + META_SIZE, PROT_READ |
+							PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	
+	DIE(new_block == MAP_FAILED, "Failed to expand program memory!");
+
+	// TODO: add block in list
+	((struct block_meta *)new_block)->size = ALIGN(size);
+	((struct block_meta *)new_block)->status = STATUS_MAPPED;
+	((struct block_meta *)new_block)->prev = NULL;
+	((struct block_meta *)new_block)->next = NULL;
+
+	return (struct block_meta *)new_block;
+}
+
+/**
+ * @param size Raw data size
+ */
+struct block_meta *expand_heap_memory(size_t size)
+{
+	void *new_block = sbrk(ALIGN(size) + META_SIZE);
+
+	DIE(new_block == (void *) -1, "Failed to expand program memory!");
+
+	((struct block_meta *)new_block)->size = ALIGN(size);
+	((struct block_meta *)new_block)->status = STATUS_ALLOC;
+	((struct block_meta *)new_block)->next = NULL;
+
+	struct block_meta *last_block = get_last_block();
+
+	if (!last_block) {
+		list_head = new_block;
+		((struct block_meta *)new_block)->prev = NULL;
 
 	} else {
-		new_mem = sbrk(ALIGN(size) + ALIGN(META_SIZE));
-		DIE(new_mem == (void *) -1, "Failed to expand program memory!");
-
-		((struct block_meta *)new_mem)->status = STATUS_ALLOC;
+		last_block->next = new_block;
+		((struct block_meta *)new_block)->prev = last_block;
 	}
 
-	((struct block_meta *)new_mem)->size = size;
-	((struct block_meta *)new_mem)->next = NULL;
-	((struct block_meta *)new_mem)->prev = NULL;
+	return (struct block_meta *)new_block;
+}
 
-	return new_mem;
+struct block_meta *get_last_block(void)
+{
+	struct block_meta *curr = list_head;
+
+	for (; curr; curr = curr->next)
+		continue;
+
+	return curr;
 }
