@@ -65,6 +65,7 @@ struct block_meta *expand_heap_memory(size_t size)
 	if (last_block->status == STATUS_FREE) {
 		void *new_block = sbrk(ALIGN(size) - last_block->size);
 		DIE(new_block == (void *) -1, "Failed to expand program memory!");
+	
 		last_block->size = ALIGN(size);
 		last_block->status = STATUS_ALLOC;
 		return last_block;
@@ -77,9 +78,8 @@ struct block_meta *expand_heap_memory(size_t size)
 	((struct block_meta *)new_block)->size = ALIGN(size);
 	((struct block_meta *)new_block)->status = STATUS_ALLOC;
 	((struct block_meta *)new_block)->next = NULL;
-
-	last_block->next = new_block;
 	((struct block_meta *)new_block)->prev = last_block;
+	last_block->next = new_block;
 
 	return (struct block_meta *)new_block;
 }
@@ -96,18 +96,18 @@ struct block_meta *get_last_block(void)
 /**
  * @param size Raw data size
  */
-struct block_meta *split_block(struct block_meta *parent, size_t size)
+void split_block(struct block_meta *parent, size_t size)
 {
-	long remaining_free_size = parent->size - META_SIZE - ALIGN(size);
+	long remaining_free_size = parent->size - ALIGN(size);
 
 	if (remaining_free_size < (long)(META_SIZE + ALIGN(1))) {
 		parent->status = STATUS_ALLOC;
-		return parent;
+		return;
 	}
 
 	struct block_meta *child = (void *)parent + META_SIZE + ALIGN(size);
 
-	child->size = (size_t)remaining_free_size;
+	child->size = (size_t)remaining_free_size - META_SIZE;
 	child->status = STATUS_FREE;
 	child->prev = parent;
 	child->next = parent->next;
@@ -117,7 +117,33 @@ struct block_meta *split_block(struct block_meta *parent, size_t size)
 	parent->size = ALIGN(size);
 	parent->status = STATUS_ALLOC;
 	parent->next = child;
-
-	return parent;
 }
 
+void coalesce_block(struct block_meta *block)
+{
+	block->status = STATUS_FREE;
+
+	if (block->next) {
+		if (block->next->status == STATUS_FREE) {
+			block->size += (META_SIZE + block->next->size);
+			if (block->next->next != NULL) {
+				block->next->next->prev = block;
+				block->next = block->next->next;
+			} else {
+				block->next = NULL;
+			}
+		}
+	}
+ 
+	if (block->prev) {
+		if (block->prev->status == STATUS_FREE) {
+			block->prev->size += (META_SIZE + block->size);
+			if (block->next != NULL) {
+				block->next->prev = block->prev;
+				block->prev->next = block->next;
+			} else {
+				block->prev->next = NULL;
+			}
+		}
+	}
+}

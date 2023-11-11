@@ -14,13 +14,10 @@ void *os_malloc(size_t size)
 	preallocate_memory();
 	struct block_meta *mem_block = find_best_free(size);
 
-	if (mem_block) {
-		// split + add data
+	if (mem_block)
 		split_block(mem_block, size);
-	} else {
-		// more memory
+	else
 		mem_block = expand_heap_memory(size);
-	}
 
 	return (void *)mem_block + META_SIZE;
 }
@@ -35,7 +32,7 @@ void os_free(void *ptr)
 	if (mem_block->status == STATUS_MAPPED)
 		munmap(mem_block, META_SIZE + mem_block->size);
 	else
-		mem_block->status = STATUS_FREE;
+		coalesce_block(mem_block);
 }
 
 void *os_calloc(size_t nmemb, size_t size)
