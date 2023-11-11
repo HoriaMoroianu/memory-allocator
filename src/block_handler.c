@@ -26,9 +26,12 @@ struct block_meta *find_best_free(size_t size)
 	struct block_meta *best_block = NULL;
 
 	for (struct block_meta *curr = list_head; curr; curr = curr->next) {
-		if (curr->status == STATUS_FREE && curr->size >= ALIGN(size) &&
-			(!best_block || best_block->size > curr->size))
+		if (curr->status == STATUS_FREE && curr->size >= ALIGN(size)) {
+			if (!best_block)
 				best_block = curr;
+			else if (best_block->size > curr->size)
+				best_block = curr;
+		}
 	}
 	return best_block;
 }
@@ -57,6 +60,16 @@ struct block_meta *expand_mapped_memory(size_t size)
  */
 struct block_meta *expand_heap_memory(size_t size)
 {
+	struct block_meta *last_block = get_last_block();
+
+	if (last_block->status == STATUS_FREE) {
+		void *new_block = sbrk(ALIGN(size) - last_block->size);
+		DIE(new_block == (void *) -1, "Failed to expand program memory!");
+		last_block->size = ALIGN(size);
+		last_block->status = STATUS_ALLOC;
+		return last_block;
+	}
+
 	void *new_block = sbrk(ALIGN(size) + META_SIZE);
 
 	DIE(new_block == (void *) -1, "Failed to expand program memory!");
@@ -65,16 +78,8 @@ struct block_meta *expand_heap_memory(size_t size)
 	((struct block_meta *)new_block)->status = STATUS_ALLOC;
 	((struct block_meta *)new_block)->next = NULL;
 
-	struct block_meta *last_block = get_last_block();
-
-	if (!last_block) {
-		list_head = new_block;
-		((struct block_meta *)new_block)->prev = NULL;
-
-	} else {
-		last_block->next = new_block;
-		((struct block_meta *)new_block)->prev = last_block;
-	}
+	last_block->next = new_block;
+	((struct block_meta *)new_block)->prev = last_block;
 
 	return (struct block_meta *)new_block;
 }
@@ -83,8 +88,36 @@ struct block_meta *get_last_block(void)
 {
 	struct block_meta *curr = list_head;
 
-	for (; curr; curr = curr->next)
+	for (; curr->next; curr = curr->next)
 		continue;
-
 	return curr;
 }
+
+/**
+ * @param size Raw data size
+ */
+struct block_meta *split_block(struct block_meta *parent, size_t size)
+{
+	long remaining_free_size = parent->size - META_SIZE - ALIGN(size);
+
+	if (remaining_free_size < (long)(META_SIZE + ALIGN(1))) {
+		parent->status = STATUS_ALLOC;
+		return parent;
+	}
+
+	struct block_meta *child = (void *)parent + META_SIZE + ALIGN(size);
+
+	child->size = (size_t)remaining_free_size;
+	child->status = STATUS_FREE;
+	child->prev = parent;
+	child->next = parent->next;
+	if (parent->next)
+		parent->next->prev = child;
+	
+	parent->size = ALIGN(size);
+	parent->status = STATUS_ALLOC;
+	parent->next = child;
+
+	return parent;
+}
+

@@ -12,10 +12,11 @@ void *os_malloc(size_t size)
 		return (void *)expand_mapped_memory(size) + META_SIZE;
 
 	preallocate_memory();
-
 	struct block_meta *mem_block = find_best_free(size);
+
 	if (mem_block) {
 		// split + add data
+		split_block(mem_block, size);
 	} else {
 		// more memory
 		mem_block = expand_heap_memory(size);
@@ -33,6 +34,8 @@ void os_free(void *ptr)
 
 	if (mem_block->status == STATUS_MAPPED)
 		munmap(mem_block, META_SIZE + mem_block->size);
+	else
+		mem_block->status = STATUS_FREE;
 }
 
 void *os_calloc(size_t nmemb, size_t size)

@@ -178,4 +178,4 @@ lerna-debug.log
 Thumbs.db
 
 # Test files
-out
+out.sh

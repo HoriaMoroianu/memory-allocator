@@ -21,5 +21,6 @@ void preallocate_memory(void);
 struct block_meta *find_best_free(size_t size);
 struct block_meta *expand_mapped_memory(size_t size);
 struct block_meta *expand_heap_memory(size_t size);
+struct block_meta *split_block(struct block_meta *parent, size_t size);
 
 struct block_meta *get_last_block(void);
