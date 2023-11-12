@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "block_handler.h"
 
@@ -42,14 +43,19 @@ struct block_meta *expand_mapped_memory(size_t size)
 {
 	void *new_block = mmap(NULL, ALIGN(size) + META_SIZE, PROT_READ |
 							PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	
+
 	DIE(new_block == MAP_FAILED, "Failed to expand program memory!");
 
-	// TODO: add block in list
 	((struct block_meta *)new_block)->size = ALIGN(size);
 	((struct block_meta *)new_block)->status = STATUS_MAPPED;
 	((struct block_meta *)new_block)->prev = NULL;
 	((struct block_meta *)new_block)->next = NULL;
+
+	if (mapped_head) {
+		((struct block_meta *)new_block)->next = mapped_head;
+		mapped_head->prev = (struct block_meta *)new_block;
+	}
+	mapped_head = (struct block_meta *)new_block;
 
 	return (struct block_meta *)new_block;
 }
@@ -63,8 +69,9 @@ struct block_meta *expand_heap_memory(size_t size)
 
 	if (last_block->status == STATUS_FREE) {
 		void *new_block = sbrk(ALIGN(size) - last_block->size);
+
 		DIE(new_block == (void *) -1, "Failed to expand program memory!");
-	
+
 		last_block->size = ALIGN(size);
 		last_block->status = STATUS_ALLOC;
 		return last_block;
@@ -106,6 +113,7 @@ void split_block(struct block_meta *parent, size_t size)
 	}
 
 	struct block_meta *child = (void *)parent + META_SIZE + ALIGN(size);
+
 	child->size = (size_t)remaining_free_size - META_SIZE;
 	child->status = STATUS_FREE;
 	child->prev = parent;
@@ -113,7 +121,7 @@ void split_block(struct block_meta *parent, size_t size)
 
 	if (parent->next)
 		parent->next->prev = child;
-	
+
 	parent->size = ALIGN(size);
 	parent->status = STATUS_ALLOC;
 	parent->next = child;
@@ -151,7 +159,33 @@ void coalesce_block(struct block_meta *block)
 void *realloc_memory(struct block_meta *mem_block, size_t size)
 {
 	void *new_ptr = os_malloc(size);
+
 	memcpy(new_ptr, (void *)mem_block + META_SIZE, MIN(size, mem_block->size));
 	os_free((void *)mem_block + META_SIZE);
 	return new_ptr;
+}
+
+void remove_mapped(struct block_meta *mem_block)
+{
+	if (mem_block->prev)
+		mem_block->prev->next = mem_block->next;
+	if (mem_block->next)
+		mem_block->next->prev = mem_block->prev;
+
+	if (mem_block == mapped_head)
+		mapped_head = mem_block->next;
+	munmap(mem_block, META_SIZE + mem_block->size);
+}
+
+int check_address(struct block_meta *mem_block)
+{
+	for (struct block_meta *curr = list_head; curr; curr = curr->next) {
+		if (curr == mem_block)
+			return 1;
+	}
+	for (struct block_meta *curr = mapped_head; curr; curr = curr->next) {
+		if (curr == mem_block)
+			return 1;
+	}
+	return 0;
 }

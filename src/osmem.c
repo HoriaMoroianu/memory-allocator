@@ -27,11 +27,13 @@ void os_free(void *ptr)
 	if (!ptr)
 		return;
 
-	// TODO: search if previosly allocated
 	struct block_meta *mem_block = ptr - META_SIZE;
 
+	if (!check_address(mem_block))
+		return;
+
 	if (mem_block->status == STATUS_MAPPED)
-		munmap(mem_block, META_SIZE + mem_block->size);
+		remove_mapped(mem_block);
 	else
 		coalesce_block(mem_block);
 }
@@ -90,6 +92,7 @@ void *os_realloc(void *ptr, size_t size)
 	// Expand last
 	if (mem_block == get_last_block()) {
 		void *new_block = sbrk(ALIGN(size) - mem_block->size);
+
 		DIE(new_block == (void *) -1, "Failed to expand program memory!");
 
 		mem_block->size = ALIGN(size);
@@ -99,7 +102,6 @@ void *os_realloc(void *ptr, size_t size)
 	// Expand middle
 	if (mem_block->next->status == STATUS_FREE &&
 		mem_block->next->size + META_SIZE >= (ALIGN(size) - mem_block->size)) {
-
 		// Merge two blocks
 		mem_block->size += (META_SIZE + mem_block->next->size);
 		if (mem_block->next->next)
