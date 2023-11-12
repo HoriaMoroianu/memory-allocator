@@ -1,6 +1,5 @@
 
 #include "block_handler.h"
-#include "block_meta.h"
 
 void preallocate_memory(void)
 {
@@ -100,23 +99,27 @@ void split_block(struct block_meta *parent, size_t size)
 {
 	long remaining_free_size = parent->size - ALIGN(size);
 
+	// Not enought for split
 	if (remaining_free_size < (long)(META_SIZE + ALIGN(1))) {
 		parent->status = STATUS_ALLOC;
 		return;
 	}
 
 	struct block_meta *child = (void *)parent + META_SIZE + ALIGN(size);
-
 	child->size = (size_t)remaining_free_size - META_SIZE;
 	child->status = STATUS_FREE;
 	child->prev = parent;
 	child->next = parent->next;
+
 	if (parent->next)
 		parent->next->prev = child;
 	
 	parent->size = ALIGN(size);
 	parent->status = STATUS_ALLOC;
 	parent->next = child;
+
+	// testing
+	coalesce_block(child);
 }
 
 void coalesce_block(struct block_meta *block)
@@ -134,7 +137,7 @@ void coalesce_block(struct block_meta *block)
 			}
 		}
 	}
- 
+
 	if (block->prev) {
 		if (block->prev->status == STATUS_FREE) {
 			block->prev->size += (META_SIZE + block->size);
@@ -146,4 +149,12 @@ void coalesce_block(struct block_meta *block)
 			}
 		}
 	}
+}
+
+void *realloc_memory(struct block_meta *mem_block, size_t size)
+{
+	void *new_ptr = os_malloc(size);
+	memcpy(new_ptr, (void *)mem_block + META_SIZE, MIN(size, mem_block->size));
+	os_free((void *)mem_block + META_SIZE);
+	return new_ptr;
 }

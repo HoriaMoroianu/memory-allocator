@@ -59,6 +59,63 @@ void *os_calloc(size_t nmemb, size_t size)
 
 void *os_realloc(void *ptr, size_t size)
 {
-	/* TODO: Implement os_realloc */
-	return NULL;
+	if (size == 80) {
+		int a = 10;
+		int b = 100;
+		a+b;
+	}
+
+	if (!ptr)
+		return os_malloc(size);
+
+	if (!size) {
+		os_free(ptr);
+		return NULL;
+	}
+
+	struct block_meta *mem_block = ptr - META_SIZE;
+
+	if (mem_block->status == STATUS_FREE)
+		return NULL;
+
+	// Heap / mapped -> mapped
+	if (ALIGN(size) + META_SIZE >= MMAP_THRESHOLD)
+		return realloc_memory(mem_block, size);
+
+	// Truncate
+	if (ALIGN(size) <= mem_block->size) {
+		// Mapped -> Heap
+		if (mem_block->status == STATUS_MAPPED)
+			return realloc_memory(mem_block, size);
+
+		// Heap -> Heap + new free block
+		split_block(mem_block, size);
+		return (void *)mem_block + META_SIZE;
+	}
+
+	// Expand last
+	if (mem_block == get_last_block()) {
+		void *new_block = sbrk(ALIGN(size) - mem_block->size);
+		DIE(new_block == (void *) -1, "Failed to expand program memory!");
+
+		mem_block->size = ALIGN(size);
+		return (void *)mem_block + META_SIZE;
+	}
+
+	// Expand middle
+	if (mem_block->next->status == STATUS_FREE &&
+		mem_block->next->size >= (ALIGN(size) - mem_block->size - META_SIZE)) {
+
+		split_block(mem_block->next, ALIGN(size) - mem_block->size - META_SIZE);
+
+		if (mem_block->next->next)
+			mem_block->next->next->prev = mem_block;
+		mem_block->next = mem_block->next->next;
+
+		mem_block->size = ALIGN(size);
+		return (void *)mem_block + META_SIZE;
+	}
+
+	// Move memory or create new block
+	return realloc_memory(mem_block, size);
 }
