@@ -93,7 +93,7 @@ struct block_meta *get_last_block(void)
 }
 
 /**
- * @param size Raw data size
+ * @param size Raw data size that remains allocated
  */
 void split_block(struct block_meta *parent, size_t size)
 {
@@ -117,9 +117,6 @@ void split_block(struct block_meta *parent, size_t size)
 	parent->size = ALIGN(size);
 	parent->status = STATUS_ALLOC;
 	parent->next = child;
-
-	// testing
-	coalesce_block(child);
 }
 
 void coalesce_block(struct block_meta *block)

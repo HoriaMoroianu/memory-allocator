@@ -38,11 +38,11 @@ void os_free(void *ptr)
 
 void *os_calloc(size_t nmemb, size_t size)
 {
-	if (!(nmemb * size) || (nmemb * size / nmemb != size))
+	if (!nmemb || !size || (nmemb * size / nmemb != size))
 		return NULL;
 
 	size *= nmemb;
-	if (ALIGN(size) + META_SIZE >= getpagesize())
+	if (ALIGN(size) + META_SIZE >= (size_t)getpagesize())
 		return (void *)expand_mapped_memory(size) + META_SIZE;
 
 	preallocate_memory();
@@ -59,12 +59,6 @@ void *os_calloc(size_t nmemb, size_t size)
 
 void *os_realloc(void *ptr, size_t size)
 {
-	if (size == 80) {
-		int a = 10;
-		int b = 100;
-		a+b;
-	}
-
 	if (!ptr)
 		return os_malloc(size);
 
@@ -104,15 +98,17 @@ void *os_realloc(void *ptr, size_t size)
 
 	// Expand middle
 	if (mem_block->next->status == STATUS_FREE &&
-		mem_block->next->size >= (ALIGN(size) - mem_block->size - META_SIZE)) {
+		mem_block->next->size + META_SIZE >= (ALIGN(size) - mem_block->size)) {
 
-		split_block(mem_block->next, ALIGN(size) - mem_block->size - META_SIZE);
-
+		// Merge two blocks
+		mem_block->size += (META_SIZE + mem_block->next->size);
 		if (mem_block->next->next)
 			mem_block->next->next->prev = mem_block;
 		mem_block->next = mem_block->next->next;
 
-		mem_block->size = ALIGN(size);
+		// Split excess
+		split_block(mem_block, ALIGN(size));
+
 		return (void *)mem_block + META_SIZE;
 	}
 
